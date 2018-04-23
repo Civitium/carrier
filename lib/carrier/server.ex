@@ -9,11 +9,11 @@ defmodule Carrier.Server do
 
   use GenServer
 
-  #############################################################################
-  ## Public API                                                              ##
-  ## ----------------------------------------------------------------------- ##
-  ## This is the public API used to verify addresses                         ##
-  #############################################################################
+  ##############################################################################
+  ## Public API                                                               ##
+  ## ------------------------------------------------------------------------ ##
+  ## This is the public API used to verify addresses                          ##
+  ##############################################################################
 
   def start_link(_state \\ nil, _opts \\ nil),
     do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
@@ -24,11 +24,11 @@ defmodule Carrier.Server do
   def verify_many(addresses),
     do: GenServer.call(__MODULE__, {:verify_many, addresses})
 
-  #############################################################################
-  ## GenServer API                                                           ##
-  ## ----------------------------------------------------------------------- ##
-  ## Don't call these functions directly; use the API above                  ##
-  #############################################################################
+  ##############################################################################
+  ## GenServer API                                                            ##
+  ## ------------------------------------------------------------------------ ##
+  ## Don't call these functions directly; use the API above                   ##
+  ##############################################################################
 
   def handle_call({:verify_one, {street, city, state, zip}}, _from, nil),
     do: {:reply, verify_address({street, city, state, zip}), nil}
@@ -36,15 +36,14 @@ defmodule Carrier.Server do
   def handle_call({:verify_many, addresses}, _from, nil),
     do: {:reply, verify_addresses(addresses), nil}
 
-  #############################################################################
-  ## Private helper functions                                                ##
-  #############################################################################
+  ##############################################################################
+  ## Private helper functions                                                 ##
+  ##############################################################################
 
   # Verify a single address
   defp verify_address({street, city, state, zip}) do
-    {:ok, resp} =
-      validator_url({street, city, state, zip})
-      |> HTTPoison.get(headers())
+    {:ok, resp} = validator_url({street, city, state, zip})
+                  |> HTTPoison.get(headers)
 
     # If there's an empty response, that means there was no match. If there are
     # multiple matches, we are only going to use the first match.
@@ -56,14 +55,14 @@ defmodule Carrier.Server do
 
   # Verify multiple addresses
   defp verify_addresses(addresses) do
-    body =
-      addresses
-      |> Enum.with_index
-      |> Enum.map(&(address_to_map &1))
-      |> Poison.encode!
-    {:ok, resp} =
-      validator_url()
-      |> HTTPoison.post(body, headers())
+    body = addresses
+           |> Enum.with_index
+           |> Enum.map(&(address_to_map &1))
+           |> Poison.encode!
+
+    {:ok, resp} = validator_url
+                  |> HTTPoison.post(body, headers)
+
     case Poison.decode!(resp.body) do
       [] -> addresses
       matches -> parse_matches addresses, matches
@@ -72,8 +71,7 @@ defmodule Carrier.Server do
 
   # Parse out matches.
   defp parse_matches(input, output) do
-    input
-    |> Enum.with_index()
+    Enum.with_index(input)
     |> Enum.map(fn({{street, city, state, zip}, index}) ->
       case Enum.find(output, fn(%{"input_index" => id}) -> id == index end) do
         nil -> {:invalid, {street, city, state, zip}}
@@ -84,24 +82,23 @@ defmodule Carrier.Server do
 
   # Parse a match
   defp parse_match(match),
-    do: {parse_street(match), parse_city(match), parse_state(match), parse_zip(match)}
+    do: {parse_street(match), parse_city(match), parse_state(match), parse_zip(match), parse_dpv_match_code(match)}
 
   # Parsers to get the street, city, state, and zipcode from a match.
   defp parse_street(match), do: match["delivery_line_1"]
   defp parse_city(match), do: match["components"]["city_name"]
   defp parse_state(match), do: match["components"]["state_abbreviation"]
+  defp parse_dpv_match_code(match), do: match["analysis"]["dpv_match_code"]
   defp parse_zip(match),
     do: "#{match["components"]["zipcode"]}-#{match["components"]["plus4_code"]}"
 
   # Converts the address into a map so that we can POST them as JSON.
   defp address_to_map({{street, city, state, zip}, index}) do
-    %{
-      "street" => street,
-      "city" => city,
-      "state" => state,
-      "zipcode" => zip,
-      "input_id" => Integer.to_string(index)
-    }
+    %{"street"   => street,
+      "city"     => city,
+      "state"    => state,
+      "zipcode"  => zip,
+      "input_id" => Integer.to_string(index)}
   end
 
   defp address_to_qp({street, city, state, zip}) do
@@ -110,22 +107,20 @@ defmodule Carrier.Server do
 
   # Request headers to send to SmartyStreets
   defp headers do
-    [
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-      "X-Standardize-Only": "true"
-    ]
+    [{"Content-Type",       "application/json"},
+     {"Accept",             "application/json"},
+     {"X-Standardize-Only", "true"}]
   end
 
   # SmartyStreets URL in the case that an address is not given. This is used for
   # sending a POST request with multiple addresses in a JSON payload.
   defp validator_url,
-    do: URI.encode("#{url_base()}?auth-id=#{auth_id()}&auth-token=#{auth_token()}")
+    do: URI.encode("#{url_base}?auth-id=#{auth_id}&auth-token=#{auth_token}")
 
   # SmartyStreets URL in the case that there is an address given. This is the
   # URL used for GET requests with single addresses.
   defp validator_url(address),
-    do: URI.encode("#{validator_url()}&#{address_to_qp(address)}")
+    do: URI.encode("#{validator_url}&#{address_to_qp address}")
 
   # Auth ID helper function. Fetches the configuration parameter.
   defp auth_id, do: Application.get_env(:carrier, :smarty_streets_id)
