@@ -30,7 +30,7 @@ defmodule Carrier.Mixfile do
   defp deps do
     [
       {:httpoison, "~> 0.13"},
-      {:poison, "~> 3.1"},
+      {:poison, "~> 2.0"},
       {:coverex, "~> 1.4.1", only: :test},
       {:ex_doc, "~> 0.10",  only: :dev}
     ]
